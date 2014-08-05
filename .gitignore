@@ -8,3 +8,7 @@ target/
 lib/
 .DS_Store
 *.swp
+*.class
+*.jar
+*.war
+*.ear
