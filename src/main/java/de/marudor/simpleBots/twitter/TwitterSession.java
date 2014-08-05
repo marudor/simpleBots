@@ -7,6 +7,7 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 import com.gargoylesoftware.htmlunit.util.NameValuePair;
 import com.google.common.util.concurrent.*;
+import de.marudor.simpleBots.EmailHandler;
 import de.marudor.simpleBots.RandomUserAgent;
 import de.marudor.simpleBots.account.Account;
 import de.marudor.simpleBots.account.AccountStatus;
@@ -67,7 +68,7 @@ public class TwitterSession {
         WebClient client = new WebClient(RandomUserAgent.getRandomBrowserVersion());
         HtmlPage registerPage = null;
         String username = accountDetails.get("username");
-        String email = accountDetails.getOrDefault("email","tw-" + username + "@marudor.de");
+        String email = accountDetails.getOrDefault("email", EmailHandler.DefaultEmail(username));
         String password = accountDetails.getOrDefault("password",generatePassword());
         logger.info("Registering "+username);
         logger.debug(email);
@@ -151,6 +152,15 @@ public class TwitterSession {
         loggedIn = true;
     }
 
+    /**
+     * Directly address the internal Twitter API.
+     * This API is not RateLimited - you have to be signed in though.
+     *
+     * @param message Message to Tweet
+     * @return Response of the Post Request
+     * @throws TwitterLoginException
+     * @throws TwitterTweetException
+     */
     public String tweet(String message) throws TwitterLoginException, TwitterTweetException {
         if (!loggedIn)
             login();

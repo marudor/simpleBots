@@ -42,6 +42,10 @@ public class EmailHandler {
         }
     }
 
+    public static String DefaultEmail(String username) {
+        return config.getString("DefaultEmail").replace("{username}", username);
+    }
+
     private final Properties props = new Properties();
     private final Session session = Session.getDefaultInstance(props);
     private final ScheduledExecutorService es = new ScheduledThreadPoolExecutor(3);
@@ -54,7 +58,7 @@ public class EmailHandler {
     public EmailHandler() {
         if (config == null)
             return;
-        props.setProperty("mail.imaps.usesocketchannels","true");
+        props.setProperty("mail.imaps.usesocketchannels", "true");
         Session session = Session.getDefaultInstance(props);
         try {
             idleManager = new IdleManager(session, es);
@@ -95,7 +99,7 @@ public class EmailHandler {
                 }
             });
             idleManager.watch(inbox);
-            Runnable r = ()->{
+            Runnable r = () -> {
                 logger.info("Manually checking Mail");
                 try {
                     inbox.expunge();
@@ -133,15 +137,15 @@ public class EmailHandler {
             }
         } catch (MessagingException e) {
             logger.error("Error processingMail (" + subject + ")");
-            moveMessage(m,error);
+            moveMessage(m, error);
         }
     }
 
     private void verifiedMailTwitter(Message m, String subject) {
         Matcher match = Pattern.compile("(.*), complete your Twitter profile today!").matcher(subject);
-        if (!match.find()){
-            logger.error("Unknown Subject? ("+subject+")");
-            moveMessage(m,unknown);
+        if (!match.find()) {
+            logger.error("Unknown Subject? (" + subject + ")");
+            moveMessage(m, unknown);
             return;
         }
         String username = match.group(1);
@@ -157,8 +161,9 @@ public class EmailHandler {
             Database.save(a);
         }
         try {
-            m.setFlag(Flags.Flag.DELETED,true);
-        } catch (MessagingException ignored) {}
+            m.setFlag(Flags.Flag.DELETED, true);
+        } catch (MessagingException ignored) {
+        }
     }
 
     private void verifyMailTwitter(Message m, String subject) {
@@ -170,7 +175,7 @@ public class EmailHandler {
             logger.debug("Might got code");
             if (code == null) {
                 logger.error("Couldn't find Code URL for " + subject);
-                moveMessage(m,error);
+                moveMessage(m, error);
                 return;
             }
             Account account;
@@ -179,7 +184,7 @@ public class EmailHandler {
                 account = Account.getByName(code.getKey());
             } catch (NotFoundException e) {
                 logger.error(e.getMessage());
-                m.setFlag(Flags.Flag.DELETED,true);
+                m.setFlag(Flags.Flag.DELETED, true);
                 return;
             }
             logger.debug("Got Account");
@@ -187,16 +192,16 @@ public class EmailHandler {
             if (success)
                 m.setFlag(Flags.Flag.DELETED, true);
             else {
-                logger.warn("Couldn't verify Account ("+account.getUsername()+")");
+                logger.warn("Couldn't verify Account (" + account.getUsername() + ")");
                 moveMessage(m, error);
             }
         } catch (MessagingException | IOException | TwitterLoginException e) {
             logger.error("Error initializing verify Twitter Mail");
-            moveMessage(m,error);
+            moveMessage(m, error);
         }
     }
 
-    private Pair<String,String> extractURL(String body) {
+    private Pair<String, String> extractURL(String body) {
         logger.debug("Got Body.");
         logger.debug(body);
         Pattern p = Pattern.compile(".*/confirm_email/(.*)/(.{5}-.{5}-.{6})");
@@ -205,19 +210,20 @@ public class EmailHandler {
         if (!matcher.find()) return null;
         logger.debug("Got Match. Returning Match.");
         String user = matcher.group(1);
-        logger.debug("User: "+user);
+        logger.debug("User: " + user);
         String code = matcher.group(2);
-        logger.debug("code: "+code);
-        return new Pair<>(user,code);
+        logger.debug("code: " + code);
+        return new Pair<>(user, code);
     }
 
     private void moveMessage(Message m, Folder destination) {
         try {
             m.setFlag(Flags.Flag.SEEN, true);
-            m.getFolder().copyMessages(new Message[]{m},destination);
-            m.setFlag(Flags.Flag.DELETED,true);
+            m.getFolder().copyMessages(new Message[]{m}, destination);
+            m.setFlag(Flags.Flag.DELETED, true);
             m.getFolder().expunge();
-        } catch (MessagingException ignored) {}
+        } catch (MessagingException ignored) {
+        }
 
     }
 
