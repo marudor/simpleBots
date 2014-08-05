@@ -30,6 +30,12 @@ public class TwitterAPI {
         });
     }
 
+    /**
+     * Using Twitter API to get all Follower for this user.
+     * @param user
+     * @return List of all Follower for this user
+     * @throws RateLimitException
+     */
     public static List<TwitterUser> getFollowerForUser(TwitterUser user) throws RateLimitException {
         if (!canUse)
             throw new RateLimitException();
@@ -47,11 +53,16 @@ public class TwitterAPI {
                 canUse=false;
                 throw new RateLimitException();
             }
-            e.printStackTrace();
         }
         return result;
     }
 
+    /**
+     * Using Twitter API to get all user this user is Following
+     * @param user
+     * @return List of all User this User is following
+     * @throws RateLimitException
+     */
     public static List<TwitterUser> getFollowingForUser(TwitterUser user) throws RateLimitException {
         if (!canUse)
             throw new RateLimitException();
@@ -69,7 +80,6 @@ public class TwitterAPI {
                 canUse=false;
                 throw new RateLimitException();
             }
-            e.printStackTrace();
         }
         return result;
     }

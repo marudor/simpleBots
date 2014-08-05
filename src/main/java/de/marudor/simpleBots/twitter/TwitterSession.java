@@ -13,8 +13,8 @@ import de.marudor.simpleBots.account.Account;
 import de.marudor.simpleBots.account.AccountStatus;
 import de.marudor.simpleBots.account.AccountType;
 import de.marudor.simpleBots.database.Database;
+import de.marudor.simpleBots.exceptions.TwitterException;
 import de.marudor.simpleBots.exceptions.TwitterLoginException;
-import de.marudor.simpleBots.exceptions.TwitterTweetException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
  */
 public class TwitterSession {
     private final ListeningExecutorService es = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(3));
+    private final Object mon = new Object();
     private static final Logger logger = LoggerFactory.getLogger(TwitterSession.class);
     private final Account account;
     private final WebClient client;
@@ -111,6 +112,12 @@ public class TwitterSession {
         return account;
     }
 
+    /**
+     * Tries to verify the Account attached to this Session using the code provided
+     * @param code The code to verify the account
+     * @return true if we succeed. false otherwise.
+     * @throws TwitterLoginException
+     */
     public boolean verifyMail(String code) throws TwitterLoginException {
         logger.debug("Verifying "+account.getUsername()+" with "+code);
         if (account.getStatus().lessThan(AccountStatus.APPROVED)) {
@@ -134,6 +141,10 @@ public class TwitterSession {
         return false;
     }
 
+    /**
+     * Lets login!
+     * @throws TwitterLoginException Well we failed.
+     */
     public void login() throws TwitterLoginException { login(null); }
     public void login(HtmlPage page) throws TwitterLoginException {
         try {
@@ -159,17 +170,16 @@ public class TwitterSession {
      * @param message Message to Tweet
      * @return Response of the Post Request
      * @throws TwitterLoginException
-     * @throws TwitterTweetException
+     * @throws TwitterException
      */
-    public String tweet(String message) throws TwitterLoginException, TwitterTweetException {
+    public String tweet(String message) throws TwitterLoginException, TwitterException {
         if (!loggedIn)
             login();
         try {
             HtmlPage page = client.getPage("https://twitter.com");
-            HtmlForm form = (HtmlForm) page.getElementById("signout-form");
-            String authToken = form.getInputByName("authenticity_token").getValueAttribute();
+            String authToken = page.getElementByName("authenticity_token").getAttribute("value");
             WebRequest request = new WebRequest(new URL("https://twitter.com/i/tweet/create"), HttpMethod.POST);
-            Map<String,String> header=new HashMap<String,String>();
+            Map<String,String> header=new HashMap<>();
             header.put("origin","https://twitter.com");
             header.put("x-requested-with","XMLHttpRequest");
             request.setAdditionalHeaders(header);
@@ -184,8 +194,41 @@ public class TwitterSession {
             return p.getWebResponse().getContentAsString();
 
         } catch (IOException e) {
-            throw new TwitterTweetException(e);
+            throw new TwitterException(e);
         }
+    }
+
+    public String updateProfile(String nickname, String bio, String location, String homepage) throws TwitterLoginException, TwitterException {
+        if (!loggedIn)
+            this.login();
+        try {
+            HtmlPage page = client.getPage("https://twitter.com/marujavafoo");
+            String authToken = page.getElementByName("authenticity_token").getAttribute("value");
+            WebRequest request = new WebRequest(new URL("https://twitter.com/i/profiles/update"), HttpMethod.POST);
+            Map<String,String> header = new HashMap<>();
+            header.put("origin","https://twitter.com");
+            header.put("x-requested-with","XMLHttpRequest");
+            request.setAdditionalHeaders(header);
+            request.setCharset("UTF-8");
+            List<NameValuePair> data = new ArrayList<>();
+            data.add(new NameValuePair("authenticity_token",authToken));
+            data.add(new NameValuePair("page_context","me"));
+            data.add(new NameValuePair("section_context","section"));
+            if (nickname != null)
+                data.add(new NameValuePair("user[name]", nickname));
+            if (bio != null)
+                data.add(new NameValuePair("user[description]", bio));
+            if (location != null)
+                data.add(new NameValuePair("user[location]", location));
+            if (homepage != null)
+                data.add(new NameValuePair("user[url]", homepage));
+            request.setRequestParameters(data);
+            Page p = client.getPage(request);
+            return p.getWebResponse().getContentAsString();
+        } catch (IOException e) {
+            throw new TwitterException(e);
+        }
+
     }
 
     private boolean addTwitterUserToList(HtmlPage page, WebClient client, List<TwitterUser> follower, FutureCallback<HtmlPage> callback) {
@@ -205,7 +248,6 @@ public class TwitterSession {
     }
 
     private List<TwitterUser> getFollowerForUserInt(TwitterUser user) {
-        final Object mon = new Object();
         FutureCallback<HtmlPage> callback =new FutureCallback<HtmlPage>() {
             @Override
             public void onSuccess(HtmlPage page) {
@@ -232,7 +274,6 @@ public class TwitterSession {
     }
 
     private List<TwitterUser> getFollowingForUserInt(TwitterUser user) {
-        final Object mon = new Object();
         FutureCallback<HtmlPage> callback = new FutureCallback<HtmlPage>() {
             @Override
             public void onSuccess(HtmlPage page) {

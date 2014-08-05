@@ -42,18 +42,24 @@ public class EmailHandler {
         }
     }
 
+    /**
+     * Configured in simpleBots.properties
+     * @param username The Default Email for this username.
+     * @return Default Email for specific User
+     */
     public static String DefaultEmail(String username) {
         return config.getString("DefaultEmail").replace("{username}", username);
     }
 
     private final Properties props = new Properties();
     private final Session session = Session.getDefaultInstance(props);
-    private final ScheduledExecutorService es = new ScheduledThreadPoolExecutor(3);
+    private final ScheduledExecutorService es = new ScheduledThreadPoolExecutor(2);
     private IdleManager idleManager;
     private Store imapStore;
     private Folder inbox;
     private Folder unknown;
     private Folder error;
+
 
     public EmailHandler() {
         if (config == null)
@@ -121,6 +127,11 @@ public class EmailHandler {
         es.shutdown();
     }
 
+
+    /**
+     * We process the Email we got
+     * @param m The Email to process
+     */
     private void processMail(Message m) {
         String subject = null;
         logger.info("Processing new email");
@@ -201,6 +212,8 @@ public class EmailHandler {
         }
     }
 
+
+
     private Pair<String, String> extractURL(String body) {
         logger.debug("Got Body.");
         logger.debug(body);
@@ -224,11 +237,6 @@ public class EmailHandler {
             m.getFolder().expunge();
         } catch (MessagingException ignored) {
         }
-
-    }
-
-    public boolean isConnected() {
-        return imapStore.isConnected();
     }
 
 }

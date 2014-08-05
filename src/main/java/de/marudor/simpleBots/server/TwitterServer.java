@@ -108,10 +108,23 @@ public class TwitterServer {
     @WebMethod
     public String tweet(@WebParam(name="tweetText") String tweetText,
                          @WebParam(name="account") Account account,
-                         @WebParam(name="accountName") String accountName) throws InvalidLoginException, NotAuthorizedException, NotFoundException, TwitterLoginException, TwitterTweetException {
+                         @WebParam(name="accountName") String accountName) throws InvalidLoginException, NotAuthorizedException, NotFoundException, TwitterLoginException, TwitterException {
         if (!Authenticator.isAllowed(wsctx, Task.REGISTER)) throw new NotAuthorizedException();
         if (account == null)
             account = Account.getByName(accountName);
         return new TwitterSession(account).tweet(tweetText);
+    }
+
+    @WebMethod
+    public String updateProfile(@WebParam(name="account") Account account,
+                                @WebParam(name="accountName") String accountName,
+                                @WebParam(name="nickname") String nickname,
+                                @WebParam(name="bio") String bio,
+                                @WebParam(name="location") String location,
+                                @WebParam(name="homepage") String homepage) throws NotAuthorizedException, InvalidLoginException, NotFoundException, TwitterLoginException, TwitterException {
+        if (!Authenticator.isAllowed(wsctx, Task.REGISTER)) throw new NotAuthorizedException();
+        if (account == null)
+            account = Account.getByName(accountName);
+        return new TwitterSession(account).updateProfile(nickname, bio, location, homepage);
     }
 }
