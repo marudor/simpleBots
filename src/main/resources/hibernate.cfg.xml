@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE hibernate-configuration PUBLIC
+    "-//Hibernate/Hibernate Configuration DTD//EN"
+    "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+  <session-factory>
+      <property name="show_sql">false</property>
+      <property name="format_sql">true</property>
+      <property name="use_sql_comments">false</property>
+      <property name="connection.autocommit">true</property>
+    <!-- DB schema will be updated if needed -->
+      <property name="hbm2ddl.auto">update</property>
+
+      <property name="connection.driver_class"></property>
+      <property name="dialect"></property>
+      <property name="connection.url"></property>
+      <property name="connection.username"></property>
+      <property name="connection.password"></property>
+
+      <mapping class="de.marudor.simpleBots.account.Country"/>
+      <mapping class="de.marudor.simpleBots.account.Person"/>
+      <mapping class="de.marudor.simpleBots.account.Account"/>
+      <mapping class="de.marudor.simpleBots.authentication.AuthUser"/>
+  </session-factory>
+</hibernate-configuration>
