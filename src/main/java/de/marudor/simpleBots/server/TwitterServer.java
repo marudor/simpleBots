@@ -15,6 +15,7 @@ import javax.jws.WebParam;
 import javax.jws.WebService;
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.ws.WebServiceContext;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 
@@ -106,13 +107,27 @@ public class TwitterServer {
      * @param accountName accountName of account to use
      */
     @WebMethod
-    public String tweet(@WebParam(name="tweetText") String tweetText,
+    public String tweet(@WebParam(name="tweetText") @XmlElement(required = true) String tweetText,
                          @WebParam(name="account") Account account,
                          @WebParam(name="accountName") String accountName) throws InvalidLoginException, NotAuthorizedException, NotFoundException, TwitterLoginException, TwitterException {
         if (!Authenticator.isAllowed(wsctx, Task.REGISTER)) throw new NotAuthorizedException();
         if (account == null)
             account = Account.getByName(accountName);
         return new TwitterSession(account).tweet(tweetText);
+    }
+
+    @WebMethod
+    public String tweetWithMedia(@WebParam(name="account") Account account,
+                                 @WebParam(name="accountName") String accountName,
+                                 @WebParam(name="tweetText") @XmlElement(required = true) String tweetText,
+                                 @WebParam(name="base64Media") @XmlElement(required = true) String base64Media) throws InvalidLoginException, NotAuthorizedException, NotFoundException, IOException, TwitterLoginException, TwitterException {
+        if (!Authenticator.isAllowed(wsctx, Task.REGISTER)) throw new NotAuthorizedException();
+        if (account == null)
+            account = Account.getByName(accountName);
+        TwitterSession session = new TwitterSession(account);
+        String mediaId = session.uploadMedia(base64Media);
+        logger.debug("mediaid: "+mediaId);
+        return session.tweet(tweetText,mediaId);
     }
 
     @WebMethod

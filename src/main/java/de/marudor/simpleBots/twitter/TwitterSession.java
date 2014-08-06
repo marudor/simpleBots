@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -163,16 +165,22 @@ public class TwitterSession {
         loggedIn = true;
     }
 
+
+
+    public String tweet(String message) throws TwitterLoginException, TwitterException {
+        return tweet(message, null);
+    }
     /**
      * Directly address the internal Twitter API.
      * This API is not RateLimited - you have to be signed in though.
      *
      * @param message Message to Tweet
+     * @param mediaId mediaId of a media already uploaded to twitter.
      * @return Response of the Post Request
      * @throws TwitterLoginException
      * @throws TwitterException
      */
-    public String tweet(String message) throws TwitterLoginException, TwitterException {
+    public String tweet(String message, String mediaId) throws TwitterLoginException, TwitterException {
         if (!loggedIn)
             login();
         try {
@@ -189,7 +197,10 @@ public class TwitterSession {
             data.add(new NameValuePair("place_id",""));
             data.add(new NameValuePair("status",message));
             data.add(new NameValuePair("tagged_users",""));
+            if (mediaId != null)
+                data.add(new NameValuePair("media_ids",mediaId));
             request.setRequestParameters(data);
+            logger.debug(mediaId);
             Page p = client.getPage(request);
             return p.getWebResponse().getContentAsString();
 
@@ -324,4 +335,18 @@ public class TwitterSession {
         }
     }
 
+    public String uploadMedia(String base64Media) throws IOException, TwitterLoginException {
+        if (!loggedIn)
+            this.login();
+        WebRequest request = new WebRequest(new URL("https://upload.twitter.com/i/media/upload.iframe"), HttpMethod.POST);
+        List<NameValuePair> data = new ArrayList<>();
+        data.add(new NameValuePair("media", base64Media));
+        request.setRequestParameters(data);
+        Page page = client.getPage(request);
+        String responseBody = page.getWebResponse().getContentAsString();
+        Pattern p = Pattern.compile(".*snf:(\\d+).*",Pattern.DOTALL);
+        Matcher m = p.matcher(responseBody);
+        m.find();
+        return m.group(1);
+    }
 }

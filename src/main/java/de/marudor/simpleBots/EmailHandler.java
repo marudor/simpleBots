@@ -36,7 +36,7 @@ public class EmailHandler {
 
     static {
         try {
-            config = new PropertiesConfiguration("simpleBots.properties").subset("EmailHandler");
+            config = new PropertiesConfiguration("config/simpleBots.properties").subset("EmailHandler");
         } catch (ConfigurationException e) {
             config = null;
         }
@@ -62,8 +62,10 @@ public class EmailHandler {
 
 
     public EmailHandler() {
-        if (config == null)
-            return;
+        if (config == null) {
+            logger.error("Couldn't find simpleBots.properties");
+            System.exit(1);
+        }
         props.setProperty("mail.imaps.usesocketchannels", "true");
         Session session = Session.getDefaultInstance(props);
         try {
@@ -106,7 +108,7 @@ public class EmailHandler {
             });
             idleManager.watch(inbox);
             Runnable r = () -> {
-                logger.info("Manually checking Mail");
+                logger.debug("Manually checking Mail");
                 try {
                     inbox.expunge();
                     for (Message m : inbox.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false)))

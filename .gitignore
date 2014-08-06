@@ -6,6 +6,7 @@ out/
 .idea_modules/
 target/
 lib/
+log/
 .DS_Store
 *.swp
 *.class

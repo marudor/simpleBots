@@ -11,6 +11,7 @@ Set Twitter Developer Tokens using any account in twitter4j.properties
 Set login to an EmailAccount getting all the Emails from twitter in simpleBots.properties  
 Set a Email template that is used to regiter Accounts in simpleBots.properties  
 Set a publish URL in jaxws.properties
+set Database information in hibernate.properties
 
 Now just compile, start, have fun doing stuff with Bots!
 

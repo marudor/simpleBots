@@ -11,12 +11,6 @@
     <!-- DB schema will be updated if needed -->
       <property name="hbm2ddl.auto">update</property>
 
-      <property name="connection.driver_class"></property>
-      <property name="dialect"></property>
-      <property name="connection.url"></property>
-      <property name="connection.username"></property>
-      <property name="connection.password"></property>
-
       <mapping class="de.marudor.simpleBots.account.Country"/>
       <mapping class="de.marudor.simpleBots.account.Person"/>
       <mapping class="de.marudor.simpleBots.account.Account"/>

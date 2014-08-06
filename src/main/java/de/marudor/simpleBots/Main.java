@@ -20,7 +20,7 @@ public class Main {
 
     static {
         try {
-            config = new PropertiesConfiguration("jaxws.properties");
+            config = new PropertiesConfiguration("config/jaxws.properties");
         } catch (ConfigurationException e) {
             config = null;
         }
