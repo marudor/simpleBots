@@ -6,4 +6,8 @@ package de.marudor.simpleBots.exceptions;
 public class TwitterLoginException extends Exception {
     public TwitterLoginException() {
     }
+
+    public TwitterLoginException(Exception e) {
+        super(e);
+    }
 }

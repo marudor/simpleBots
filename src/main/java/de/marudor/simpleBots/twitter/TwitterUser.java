@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * Created by marudor on 01/08/14.
  */
-public class TwitterUser {
+class TwitterUser {
     private final String username;
     private final String screenName;
     private final List<TwitterUser> follower = new ArrayList<>();

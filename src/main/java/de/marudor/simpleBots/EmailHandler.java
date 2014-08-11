@@ -1,12 +1,11 @@
 package de.marudor.simpleBots;
 
 
-import com.sun.mail.imap.IdleManager;
+import com.sun.mail.imap.IMAPFolder;
 import de.marudor.simpleBots.account.Account;
 import de.marudor.simpleBots.account.AccountStatus;
 import de.marudor.simpleBots.database.Database;
 import de.marudor.simpleBots.exceptions.NotFoundException;
-import de.marudor.simpleBots.exceptions.TwitterLoginException;
 import de.marudor.simpleBots.twitter.TwitterSession;
 import javafx.util.Pair;
 import org.apache.commons.configuration.Configuration;
@@ -19,7 +18,6 @@ import javax.mail.*;
 import javax.mail.event.MessageCountAdapter;
 import javax.mail.event.MessageCountEvent;
 import javax.mail.search.FlagTerm;
-import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -32,48 +30,31 @@ import java.util.regex.Pattern;
  */
 public class EmailHandler {
     private static final Logger logger = LoggerFactory.getLogger(EmailHandler.class);
-    private static Configuration config;
-
-    static {
-        try {
-            config = new PropertiesConfiguration("config/simpleBots.properties").subset("EmailHandler");
-        } catch (ConfigurationException e) {
-            config = null;
-        }
-    }
-
+    private static String DefaultTemplate;
     /**
      * Configured in simpleBots.properties
      * @param username The Default Email for this username.
      * @return Default Email for specific User
      */
     public static String DefaultEmail(String username) {
-        return config.getString("DefaultEmail").replace("{username}", username);
+        return DefaultTemplate.replace("{username}", username);
     }
 
-    private final Properties props = new Properties();
-    private final Session session = Session.getDefaultInstance(props);
-    private final ScheduledExecutorService es = new ScheduledThreadPoolExecutor(2);
-    private IdleManager idleManager;
-    private Store imapStore;
-    private Folder inbox;
     private Folder unknown;
     private Folder error;
 
 
     public EmailHandler() {
-        if (config == null) {
+        Session session = Session.getDefaultInstance(new Properties());
+        Store imapStore;
+        Configuration config = null;
+        try {
+            config = new PropertiesConfiguration("config/simpleBots.properties").subset("EmailHandler");
+        } catch (ConfigurationException e) {
             logger.error("Couldn't find simpleBots.properties");
             System.exit(1);
         }
-        props.setProperty("mail.imaps.usesocketchannels", "true");
-        Session session = Session.getDefaultInstance(props);
-        try {
-            idleManager = new IdleManager(session, es);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
-        }
+        DefaultTemplate = config.getString("DefaultEmail");
         try {
             imapStore = session.getStore(config.getString("storeType", "imaps"));
             imapStore.connect(config.getString("server"), config.getString("username"), config.getString("password"));
@@ -82,9 +63,9 @@ public class EmailHandler {
             logger.error(e.getMessage());
             return;
         }
-
+        final IMAPFolder inbox;
         try {
-            inbox = imapStore.getFolder("INBOX");
+            inbox = (IMAPFolder) imapStore.getFolder("INBOX");
             unknown = inbox.getFolder("UNKNOWN");
             if (!unknown.exists())
                 unknown.create(Folder.HOLDS_MESSAGES);
@@ -94,39 +75,39 @@ public class EmailHandler {
             error.open(Folder.READ_WRITE);
             unknown.open(Folder.READ_WRITE);
             inbox.open(Folder.READ_WRITE);
+            inbox.setSubscribed(true);
             inbox.addMessageCountListener(new MessageCountAdapter() {
                 public void messagesAdded(MessageCountEvent e) {
-                    logger.info("New Email found");
+                    logger.debug("New Email found");
                     for (Message m : e.getMessages())
                         processMail(m);
-                    try {
-                        idleManager.watch(inbox);
-                    } catch (IOException | MessagingException e1) {
-                        e1.printStackTrace();
-                    }
                 }
             });
-            idleManager.watch(inbox);
-            Runnable r = () -> {
+            ScheduledExecutorService es = new ScheduledThreadPoolExecutor(2);
+            es.scheduleWithFixedDelay(() -> {
                 logger.debug("Manually checking Mail");
                 try {
-                    inbox.expunge();
                     for (Message m : inbox.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false)))
                         processMail(m);
                 } catch (MessagingException e) {
                     e.printStackTrace();
                 }
-            };
-            es.scheduleWithFixedDelay(r, 0, 10, TimeUnit.MINUTES);
-        } catch (MessagingException | IOException e) {
-            e.printStackTrace();
-        }
-    }
+            }, 0, 10, TimeUnit.MINUTES);
+            es.schedule((Runnable) () -> {
+                while (true) {
+                    try {
+                        logger.debug("Idling inbox");
+                        inbox.idle();
+                    } catch (MessagingException ignored) {
+                        logger.error("idling failed");
+                    }
+                }
+            }, 0, TimeUnit.MINUTES);
 
-    public synchronized void quit() {
-        //es.shutdownNow();
-        this.idleManager.stop();
-        es.shutdown();
+        } catch (MessagingException e) {
+            logger.debug("Failed Emailhandler init");
+            logger.debug(e.getMessage());
+        }
     }
 
 
@@ -138,20 +119,27 @@ public class EmailHandler {
         String subject = null;
         logger.info("Processing new email");
         try {
-            subject = m.getSubject();
+            subject = m.getSubject().intern();
             logger.debug("Got Subject");
             if (subject.contains("Confirm your Twitter account"))
                 verifyMailTwitter(m, subject);
             else if (subject.contains("complete your Twitter profile today!"))
                 verifiedMailTwitter(m, subject);
+            else if (subject.contains(" one of your Tweets!"))
+                deleteMail(m);
             else {
                 logger.warn("Unknown subject found. (" + subject + ")");
                 moveMessage(m, unknown);
             }
         } catch (MessagingException e) {
             logger.error("Error processingMail (" + subject + ")");
+            logger.debug(e.toString());
             moveMessage(m, error);
         }
+    }
+
+    private void deleteMail(Message m) throws MessagingException {
+        m.setFlag(Flags.Flag.DELETED, true);
     }
 
     private void verifiedMailTwitter(Message m, String subject) {
@@ -174,8 +162,9 @@ public class EmailHandler {
             Database.save(a);
         }
         try {
-            m.setFlag(Flags.Flag.DELETED, true);
-        } catch (MessagingException ignored) {
+            deleteMail(m);
+        } catch (MessagingException e) {
+            logger.debug("Couldn't delete message "+e.getMessage());
         }
     }
 
@@ -208,7 +197,7 @@ public class EmailHandler {
                 logger.warn("Couldn't verify Account (" + account.getUsername() + ")");
                 moveMessage(m, error);
             }
-        } catch (MessagingException | IOException | TwitterLoginException e) {
+        } catch (Exception e) {
             logger.error("Error initializing verify Twitter Mail");
             moveMessage(m, error);
         }
@@ -236,9 +225,7 @@ public class EmailHandler {
             m.setFlag(Flags.Flag.SEEN, true);
             m.getFolder().copyMessages(new Message[]{m}, destination);
             m.setFlag(Flags.Flag.DELETED, true);
-            m.getFolder().expunge();
         } catch (MessagingException ignored) {
         }
     }
-
 }

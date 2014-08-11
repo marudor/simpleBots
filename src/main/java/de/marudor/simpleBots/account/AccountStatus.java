@@ -15,11 +15,4 @@ public enum AccountStatus {
         return this.ordinal() > other.ordinal();
     }
 
-    public boolean greaterThan(AccountStatus other) {
-        return this.ordinal() < other.ordinal();
-    }
-
-    public boolean greaterEqualThan(AccountStatus other) { return this.ordinal() <= other.ordinal(); }
-
-    public boolean lessEqualThan(AccountStatus other) { return this.ordinal() >= other.ordinal(); }
 }

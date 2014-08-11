@@ -9,7 +9,4 @@ public class MissingArgumentException extends Exception {
         super(message);
     }
 
-    public MissingArgumentException(String message, Throwable cause) {
-        super(message, cause);
-    }
 }

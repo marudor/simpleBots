@@ -5,7 +5,7 @@
     <endpoint
             name='TwitterServer'
             implementation='de.marudor.simpleBots.server.TwitterServer'
-            url-pattern='/twitter'
+            url-pattern='/twitter/'
             />
 
 </endpoints>
