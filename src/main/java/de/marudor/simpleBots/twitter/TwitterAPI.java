@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Created by marudor on 01/08/14.
  */
-public class TwitterAPI {
+class TwitterAPI {
     private final static Twitter twitter = TwitterFactory.getSingleton();
     private final static ScheduledExecutorService es = Executors.newSingleThreadScheduledExecutor();
     private static boolean canUse = true;

@@ -1,11 +1,18 @@
 package de.marudor.simpleBots.authentication;
 
+import com.lambdaworks.crypto.SCryptUtil;
 import de.marudor.simpleBots.database.Database;
+import de.marudor.simpleBots.exceptions.NotFoundException;
 import org.hibernate.Session;
 import org.hibernate.criterion.Restrictions;
+import twitter4j.Logger;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotNull;
+import javax.xml.ws.WebServiceContext;
+import javax.xml.ws.handler.MessageContext;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Created by marudor on 03/08/14.
@@ -13,6 +20,7 @@ import javax.validation.constraints.NotNull;
 
 @Entity
 public class AuthUser {
+    private static final Logger logger = Logger.getLogger(AuthUser.class);
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -27,9 +35,11 @@ public class AuthUser {
     public AuthUser() {
     }
 
-    public AuthUser(String username, String password, boolean admin) {
+    private AuthUser(String username, String password, boolean admin) {
         this.username = username;
-        this.password = password;
+        int n = (int) Math.pow(2,14);
+        logger.debug("Crypting Password using "+n);
+        this.password = SCryptUtil.scrypt(password, n, 8, 1);
         this.admin = admin;
     }
 
@@ -57,6 +67,10 @@ public class AuthUser {
         this.admin = admin;
     }
 
+    public boolean correctPassword(String password) {
+        return SCryptUtil.check(password, this.password);
+    }
+
     public static boolean isAdmin(String username) {
         AuthUser u = getByUsername(username);
         return (u != null && u.isAdmin());
@@ -70,4 +84,26 @@ public class AuthUser {
             if (s != null && s.isOpen()) s.close();
         }
     }
+
+    public static void createNew(String username, String password, boolean admin) {
+        AuthUser user = new AuthUser(username, password, admin);
+        logger.debug("Crypted Password, saving");
+        Database.save(user);
+        logger.debug("Saved AuthUser");
+    }
+
+    public static void delete(String username) throws NotFoundException {
+        AuthUser user = AuthUser.getByUsername(username);
+        if (user == null) throw new NotFoundException();
+        Database.delete(user);
+    }
+
+    public static boolean isSame(WebServiceContext wsctx, String username) {
+        MessageContext mctx = wsctx.getMessageContext();
+        Map http_headers = (Map) mctx.get(MessageContext.HTTP_REQUEST_HEADERS);
+        List userList = (List) http_headers.get("Username");
+        String contextUsername = userList!=null ? userList.get(0).toString() : null;
+        return contextUsername.equals(username);
+    }
+
 }

@@ -15,21 +15,25 @@ import java.util.Properties;
  * Created by marudor on 29/07/14.
  */
 public class Database {
-    public static Properties connectionProperties;
+    private static SessionFactory sessionFactory;
     static {
+        Properties connectionProperties = new Properties();
         try {
             PropertiesConfiguration connectionPropertiesConfiguraton = new PropertiesConfiguration("config/hibernate.properties");
-            connectionProperties = new Properties();
             try (FileReader fr = new FileReader(connectionPropertiesConfiguraton.getFile())) {
                 connectionProperties.load(fr);
-            } catch (IOException e) {
-                e.printStackTrace();
+            } catch (IOException ignored) {
+                ignored.printStackTrace();
             }
-        } catch (ConfigurationException e) {
-            connectionProperties = null;
+            sessionFactory = new Configuration().configure().addProperties(connectionProperties).buildSessionFactory();
         }
+        catch (ConfigurationException ignored) {
+            ignored.printStackTrace();
+        }
+        Session s = getSession();
+        if (s.createCriteria(UserAgent.class).list().isEmpty())
+            UserAgent.initialData();
     }
-    public static final SessionFactory sessionFactory = new Configuration().configure().addProperties(connectionProperties).buildSessionFactory();
 
     public static Session getSession() {
         return sessionFactory.openSession();
@@ -38,6 +42,13 @@ public class Database {
     public static void save(Object o) {
         Session s = getSession();
         s.saveOrUpdate(o);
+        s.flush();
+        s.close();
+    }
+
+    public static void delete(Object o) {
+        Session s = getSession();
+        s.delete(o);
         s.flush();
         s.close();
     }

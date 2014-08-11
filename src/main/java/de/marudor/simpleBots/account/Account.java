@@ -1,17 +1,17 @@
 package de.marudor.simpleBots.account;
 
 import de.marudor.simpleBots.database.Database;
+import de.marudor.simpleBots.database.UserAgent;
 import de.marudor.simpleBots.exceptions.NotFoundException;
 import org.hibernate.Session;
 import org.hibernate.criterion.Restrictions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotNull;
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlElement;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,12 +21,14 @@ import java.util.List;
 @Entity
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Account {
-    private static final Logger logger = LoggerFactory.getLogger(Account.class);
-
     @NotNull
     @Enumerated(EnumType.ORDINAL)
     @XmlElement(name="accountType")
     private AccountType type;
+    @NotNull
+    @ManyToOne(fetch = FetchType.EAGER)
+    @XmlElement
+    private UserAgent userAgent;
     @ManyToOne(fetch = FetchType.LAZY)
     @XmlElement
     private Person person;
@@ -40,19 +42,15 @@ public class Account {
     @XmlElement
     private String email;
     @NotNull
-    @XmlElement
-    private String userAgent;
-    @NotNull
     @Enumerated(EnumType.ORDINAL)
     @XmlElement(name="accountStatus")
     private AccountStatus status;
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @XmlElement
     private int id;
 
 
-    public Account(Person person, String username, String password, String email, String userAgent, AccountType accountType) {
+    public Account(Person person, String username, String password, String email, UserAgent userAgent, AccountType accountType) {
         this.person = person;
         this.username = username;
         this.password = password;
@@ -101,8 +99,12 @@ public class Account {
         return type == AccountType.Facebook;
     }
 
-    public String getUserAgent() {
+    public UserAgent getUserAgent() {
         return userAgent;
+    }
+
+    public void setUserAgent(UserAgent userAgent) {
+        this.userAgent = userAgent;
     }
 
     public boolean isUseable() {
@@ -134,5 +136,14 @@ public class Account {
             accountList = s.createCriteria(Account.class).add(Restrictions.ne("status",AccountStatus.BANNED)).list();
         s.close();
         return accountList;
+    }
+
+    public static List<Account> getRandomX(int number) {
+        List<Account> r = new ArrayList<>();
+        Session s = Database.getSession();
+        r = s.createQuery("select a from Account a order by rand()")
+                .setMaxResults(number)
+                .list();
+        return r;
     }
 }

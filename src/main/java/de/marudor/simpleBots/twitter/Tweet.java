@@ -6,8 +6,8 @@ import de.marudor.simpleBots.account.Account;
  * Created by marudor on 03/08/14.
  */
 public class Tweet {
-    private String tweet;
-    private Account account;
+    private final String tweet;
+    private final Account account;
 
     public Tweet(String tweet, Account account) {
         this.tweet = tweet;

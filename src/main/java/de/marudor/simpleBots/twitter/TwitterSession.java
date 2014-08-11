@@ -13,13 +13,19 @@ import de.marudor.simpleBots.account.Account;
 import de.marudor.simpleBots.account.AccountStatus;
 import de.marudor.simpleBots.account.AccountType;
 import de.marudor.simpleBots.database.Database;
+import de.marudor.simpleBots.database.UserAgent;
+import de.marudor.simpleBots.exceptions.AccountChangedException;
+import de.marudor.simpleBots.exceptions.TwitterCaptchaException;
 import de.marudor.simpleBots.exceptions.TwitterException;
 import de.marudor.simpleBots.exceptions.TwitterLoginException;
+import gnu.trove.map.hash.TCharObjectHashMap;
+import gnu.trove.map.hash.THashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URL;
+import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -30,23 +36,24 @@ import java.util.regex.Pattern;
  * Created by marudor on 01/08/14.
  */
 public class TwitterSession {
-    private final ListeningExecutorService es = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(3));
-    private final Object mon = new Object();
+    private final ListeningExecutorService es = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
     private static final Logger logger = LoggerFactory.getLogger(TwitterSession.class);
     private final Account account;
     private final WebClient client;
     private boolean loggedIn;
+    private boolean loggedInMobile;
 
     public TwitterSession(Account account) {
         this.account = account;
-        this.client = new WebClient(new BrowserVersion("","",account.getUserAgent(),1));
+        this.client = new WebClient(new BrowserVersion("","",account.getUserAgent().getUserAgent(),1));
         this.client.getOptions().setCssEnabled(false);
         this.client.getOptions().setJavaScriptEnabled(false);
         this.client.getCookieManager().addCookie(new Cookie("mobile.twitter.com", "images", "false"));
         this.loggedIn = false;
+        this.loggedInMobile = false;
     }
 
-    public TwitterSession() {
+    private TwitterSession() {
         account = null;
         this.client = new WebClient(RandomUserAgent.getRandomBrowserVersion());
         this.client.getOptions().setCssEnabled(false);
@@ -58,27 +65,26 @@ public class TwitterSession {
         return UUID.randomUUID().toString();
     }
 
-
     /**
      *
      * @param accountDetails Map containing the details for registration.
-     *                       Needs at least a 'username'
-     *                       'email' is optional otherwise defaults to tw-{username}@marudor.de
-     *                       'password' is optional otherwise defaults to a random one
+     *                       Needs at least a 'u' (username)
+     *                       'e' (email) is optional otherwise defaults to tw-{username}@marudor.de
+     *                       'p' (password) is optional otherwise defaults to a random one
      * @return null if unsuccessfull, otherwise the newly registred Account.
      */
-    public static Account registerTwitter(Map<String,String> accountDetails) {
-        WebClient client = new WebClient(RandomUserAgent.getRandomBrowserVersion());
-        HtmlPage registerPage = null;
-        String username = accountDetails.get("username");
-        String email = accountDetails.getOrDefault("email", EmailHandler.DefaultEmail(username));
-        String password = accountDetails.getOrDefault("password",generatePassword());
+    public static Account registerTwitter(TCharObjectHashMap<String> accountDetails) {
+        UserAgent userAgent = RandomUserAgent.getRandomUserAgent();
+        WebClient client = new WebClient(RandomUserAgent.getBrowserVersion(userAgent));
+        HtmlPage registerPage;
+        String username = accountDetails.get('u');
+        String email = accountDetails.get('e');
+        if (email == null) email = EmailHandler.DefaultEmail(username);
+        String password = accountDetails.get('p');
+        if (password == null) password = generatePassword();
         logger.info("Registering "+username);
-        logger.debug(email);
-        logger.debug(password);
         try {
             registerPage = client.getPage("https://mobile.twitter.com/signup");
-            logger.info("Found register Page");
         } catch (IOException e) {
             e.printStackTrace();
             return null;
@@ -90,26 +96,22 @@ public class TwitterSession {
         form.getInputByName("oauth_signup_client[password]").setValueAttribute(password);
 
         try {
-            logger.info("Sending Register");
             registerPage = form.getInputByName("commit").click();
-            logger.info("Send Register");
         } catch (IOException e) {
             return null;
         }
         form = registerPage.getForms().get(0);
         if (form.getFirstByXPath("//div[contains(@class,\"invalid-field\")]") != null) return null;
         username = form.getInputByName("settings[screen_name]").getValueAttribute();
-        logger.info("Got username ("+username+")");
         try {
-            registerPage = form.getInputByName("commit").click();
+            form.getInputByName("commit").click();
             logger.info("Completed Register");
         } catch (IOException e) {
             return null;
         }
 
-        Account account  = new Account(null, username, password, email, client.getBrowserVersion().getUserAgent(), AccountType.Twitter);
+        Account account  = new Account(null, username, password, email, userAgent, AccountType.Twitter);
         account.setStatus(AccountStatus.REGISTRED);
-
         Database.save(account);
         return account;
     }
@@ -120,7 +122,7 @@ public class TwitterSession {
      * @return true if we succeed. false otherwise.
      * @throws TwitterLoginException
      */
-    public boolean verifyMail(String code) throws TwitterLoginException {
+    public boolean verifyMail(String code) throws TwitterLoginException, AccountChangedException, TwitterCaptchaException, TwitterException {
         logger.debug("Verifying "+account.getUsername()+" with "+code);
         if (account.getStatus().lessThan(AccountStatus.APPROVED)) {
             logger.warn(account.getUsername()+" is already verified.");
@@ -128,7 +130,6 @@ public class TwitterSession {
         }
         try {
             Page verifyPage = client.getPage("https://twitter.com/account/confirm_email/"+account.getUsername()+"/"+code);
-            String f = verifyPage.getUrl().getPath();
             if (verifyPage.getUrl().getPath().equals("/login"))
                 this.login((HtmlPage)verifyPage);
             if (this.loggedIn) {
@@ -147,8 +148,8 @@ public class TwitterSession {
      * Lets login!
      * @throws TwitterLoginException Well we failed.
      */
-    public void login() throws TwitterLoginException { login(null); }
-    public void login(HtmlPage page) throws TwitterLoginException {
+    boolean login() throws TwitterLoginException, AccountChangedException, TwitterCaptchaException, TwitterException { return login(null); }
+    boolean login(HtmlPage page) throws TwitterLoginException, AccountChangedException, TwitterCaptchaException, TwitterException {
         try {
             if (page == null)
                 page = client.getPage("https://twitter.com/login");
@@ -156,19 +157,94 @@ public class TwitterSession {
             loginForm.getInputByName("session[username_or_email]").setValueAttribute(account.getUsername());
             loginForm.getInputByName("session[password]").setValueAttribute(account.getPassword());
             page = loginForm.getElementsByAttribute("button","type","submit").get(0).click();
-            if (!page.getUrl().getPath().equals("/"))
-                throw new IOException();
+            if (page.getUrl().getHost().contains("mobile")) {
+                logger.error("UserAgent ("+client.getBrowserVersion().getUserAgent()+") is old and incompatible. Trying new");
+                UserAgent newAgent = this.account.getUserAgent();
+                while (newAgent == this.account.getUserAgent())
+                    newAgent=RandomUserAgent.getRandomUserAgent();
+                this.account.setUserAgent(newAgent);
+                Database.save(this.account);
+                UserAgent.deleteByUserAgent(client.getBrowserVersion().getUserAgent());
+                throw new AccountChangedException(this.account);
+            }
+            if (page.getElementById("captcha-challenge-form") != null) {
+                loginMobile();
+                return false;
+            }
+            //if (!page.getUrl().getPath().equals("/"))
+            //    throw new IOException();
+            logger.debug("Logged in");
+
         } catch (IOException e) {
-            logger.error("Couldn't login "+account.getUsername());
-            throw new TwitterLoginException();
+            logger.error("Couldn't login " + account.getUsername());
+            throw new TwitterLoginException(e);
         }
         loggedIn = true;
+        return true;
+    }
+
+    public String tweetMobile(String message, String mediaId, HtmlPage page) throws TwitterException, TwitterLoginException {
+        try {
+            if (!loggedInMobile)
+                loginMobile();
+            if (page == null)
+                page = client.getPage("https://mobile.twitter.com/compose/tweet");
+            String authToken = page.getElementByName("authenticity_token").getAttribute("value");
+            List<NameValuePair> data = new ArrayList<>();
+            data.add(new NameValuePair("tweet[text]",message));
+            data.add(new NameValuePair("authenticity_token", authToken));
+            data.add(new NameValuePair("commit","Tweet"));
+            WebRequest request = new WebRequest(new URL("https://mobile.twitter.com/"), HttpMethod.POST);
+            request.setRequestParameters(data);
+            Map<String, String> header = new THashMap<>();
+            header.put("Referer","https://mobile.twitter.com/compose/tweet");
+            header.put("Origin","https://mobile.twitter.com/");
+            page = client.getPage(request);
+            logger.error(page.getWebResponse().getContentAsString());
+            return page.getWebResponse().getContentAsString();
+        } catch (IOException e) {
+            throw new TwitterException(e);
+        }
+
+    }
+
+    private void loginMobile() throws TwitterLoginException {
+        try {
+            HtmlPage page = client.getPage("https://mobile.twitter.com/i/guest");
+            String authToken = page.getElementByName("authenticity_token").getAttribute("value");
+            WebRequest request = new WebRequest(new URL("https://mobile.twitter.com/session"));
+            List<NameValuePair> data = new ArrayList<>();
+            data.add(new NameValuePair("username",this.account.getUsername()));
+            data.add(new NameValuePair("password",this.account.getPassword()));
+            data.add(new NameValuePair("authenticity_token", authToken));
+            data.add(new NameValuePair("commit","Sign in"));
+            request.setRequestParameters(data);
+            page = client.getPage(request);
+            loggedInMobile = true;
+            //logger.error(page.getWebResponse().getContentAsString());
+        } catch (IOException e) {
+            logger.error("Couldn't login " + account.getUsername());
+            throw new TwitterLoginException(e);
+        }
     }
 
 
-
-    public String tweet(String message) throws TwitterLoginException, TwitterException {
-        return tweet(message, null);
+    public void tweet(String message) throws TwitterLoginException, TwitterException, AccountChangedException, TwitterCaptchaException {
+        tweet(message, null);
+    }
+    public void tweet(String message, String mediaId) throws TwitterLoginException, TwitterException, AccountChangedException, TwitterCaptchaException {
+        if (!loggedIn)
+            if (!login()) {
+                tweetMobile(message, mediaId, null);
+                return;
+            }
+        HtmlPage page;
+        try {
+            page = client.getPage("https://twitter.com");
+        } catch (IOException e) {
+            throw new TwitterException(e);
+        }
+        tweet(message, mediaId, page, true);
     }
     /**
      * Directly address the internal Twitter API.
@@ -176,47 +252,71 @@ public class TwitterSession {
      *
      * @param message Message to Tweet
      * @param mediaId mediaId of a media already uploaded to twitter.
+     * @param page Page to use - should be logged in!
+     * @param tryAgain Should we try again if twitter refuses=
      * @return Response of the Post Request
      * @throws TwitterLoginException
      * @throws TwitterException
      */
-    public String tweet(String message, String mediaId) throws TwitterLoginException, TwitterException {
+    public void tweet(String message, String mediaId, HtmlPage page, boolean tryAgain) throws TwitterLoginException, TwitterException, AccountChangedException, TwitterCaptchaException {
         if (!loggedIn)
-            login();
+            if (!login()) {
+                tweetMobile(message, mediaId, null);
+                return;
+            }
         try {
-            HtmlPage page = client.getPage("https://twitter.com");
+            logger.debug(MessageFormat.format("Tweeting ({0}, {1})", message, mediaId));
             String authToken = page.getElementByName("authenticity_token").getAttribute("value");
             WebRequest request = new WebRequest(new URL("https://twitter.com/i/tweet/create"), HttpMethod.POST);
-            Map<String,String> header=new HashMap<>();
-            header.put("origin","https://twitter.com");
-            header.put("x-requested-with","XMLHttpRequest");
+            Map<String, String> header = new THashMap<>();
+            header.put("Origin", "https://twitter.com");
+            header.put("Referer", "https://twitter.com");
+            header.put("Accept", "application/json, text/javascript, */*; q=0.01");
+            header.put("X-Requested-With", "XMLHttpRequest");
+            header.put("DNT", "1");
+            header.put("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
             request.setAdditionalHeaders(header);
             request.setCharset("UTF-8");
             List<NameValuePair> data = new ArrayList<>();
-            data.add(new NameValuePair("authenticity_token",authToken));
-            data.add(new NameValuePair("place_id",""));
-            data.add(new NameValuePair("status",message));
-            data.add(new NameValuePair("tagged_users",""));
+            logger.warn("authToken: " + authToken);
+            data.add(new NameValuePair("authenticity_token", authToken));
+            data.add(new NameValuePair("place_id", ""));
+            data.add(new NameValuePair("status", message));
+            data.add(new NameValuePair("tagged_users", ""));
             if (mediaId != null)
-                data.add(new NameValuePair("media_ids",mediaId));
+                data.add(new NameValuePair("media_ids", mediaId));
             request.setRequestParameters(data);
-            logger.debug(mediaId);
             Page p = client.getPage(request);
-            return p.getWebResponse().getContentAsString();
-
+            for (NameValuePair rh : p.getWebResponse().getResponseHeaders())
+                logger.warn(rh.getName() + " : " + rh.getValue());
+            return;
+        } catch (FailingHttpStatusCodeException e) {
+            if (!tryAgain)
+                throw new TwitterException(e);
+            logger.error(e.getResponse().getContentAsString());
+            if (e.getStatusCode()==403) {
+                try {
+                    page = (HtmlPage) page.refresh();
+                } catch (IOException e1) {
+                    throw new TwitterException(e);
+                }
+                tweet(message,mediaId,page,false);
+                return;
+            }
+            throw new TwitterException(e);
         } catch (IOException e) {
             throw new TwitterException(e);
         }
     }
 
-    public String updateProfile(String nickname, String bio, String location, String homepage) throws TwitterLoginException, TwitterException {
+    public String updateProfile(String nickname, String bio, String location, String homepage) throws TwitterLoginException, TwitterException, AccountChangedException, TwitterCaptchaException {
         if (!loggedIn)
             this.login();
         try {
             HtmlPage page = client.getPage("https://twitter.com/marujavafoo");
             String authToken = page.getElementByName("authenticity_token").getAttribute("value");
             WebRequest request = new WebRequest(new URL("https://twitter.com/i/profiles/update"), HttpMethod.POST);
-            Map<String,String> header = new HashMap<>();
+            Map<String,String> header = new THashMap<>();
             header.put("origin","https://twitter.com");
             header.put("x-requested-with","XMLHttpRequest");
             request.setAdditionalHeaders(header);
@@ -259,6 +359,7 @@ public class TwitterSession {
     }
 
     private List<TwitterUser> getFollowerForUserInt(TwitterUser user) {
+        Object mon = new Object();
         FutureCallback<HtmlPage> callback =new FutureCallback<HtmlPage>() {
             @Override
             public void onSuccess(HtmlPage page) {
@@ -285,6 +386,7 @@ public class TwitterSession {
     }
 
     private List<TwitterUser> getFollowingForUserInt(TwitterUser user) {
+        Object mon = new Object();
         FutureCallback<HtmlPage> callback = new FutureCallback<HtmlPage>() {
             @Override
             public void onSuccess(HtmlPage page) {
@@ -317,8 +419,6 @@ public class TwitterSession {
         } catch (RateLimitException e) {
             return new TwitterSession().getFollowingForUserInt(user);
         }
-
-
     }
 
     /**
@@ -335,7 +435,8 @@ public class TwitterSession {
         }
     }
 
-    public String uploadMedia(String base64Media) throws IOException, TwitterLoginException {
+
+    public String uploadMedia(String base64Media) throws IOException, TwitterLoginException, AccountChangedException, TwitterCaptchaException, TwitterException {
         if (!loggedIn)
             this.login();
         WebRequest request = new WebRequest(new URL("https://upload.twitter.com/i/media/upload.iframe"), HttpMethod.POST);

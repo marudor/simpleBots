@@ -1,5 +1,6 @@
 package de.marudor.simpleBots.authentication;
 
+import com.lambdaworks.crypto.SCryptUtil;
 import de.marudor.simpleBots.exceptions.InvalidLoginException;
 
 import javax.xml.ws.WebServiceContext;
@@ -13,17 +14,21 @@ import java.util.Map;
 public class Authenticator {
 
 
-    public static boolean isAllowed(String username, String password, Task task) throws InvalidLoginException {
+    private static boolean isAllowed(String username, String password, Task task) throws InvalidLoginException {
         AuthUser user = AuthUser.getByUsername(username);
-        if (user == null || !user.getPassword().equals(password)) throw new InvalidLoginException();
+        if (user == null || !SCryptUtil.check(password, user.getPassword())) throw new InvalidLoginException();
         switch (task) {
             case TWEET:
+            case TWEET_WITH_MEDIA:
             case REGISTER:
             case GET_STATUS:
             case GET_ACCOUNT:
             case GET_ACCOUNTS:
+            case UPDATE_PROFILE:
+            case MASS_TWEET:
                 return true;
             case CREATE_API_USER:
+            case DELETE_API_USER:
                 return user.isAdmin();
             default:
                 return false;
